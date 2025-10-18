@@ -1,4 +1,6 @@
-### Stow for specific OS
+# Some Dots for Mac and Linux
+
+## Stow for specific OS
 
 Run whatever you need for the distro:
 
@@ -10,10 +12,11 @@ stow macos
 
 or for linux
 
-````
+```
 stow shared
 stow linux
 ```
+
 ### nvim-distros
 
 ```
