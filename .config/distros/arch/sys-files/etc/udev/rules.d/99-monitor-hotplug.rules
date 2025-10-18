@@ -1,2 +1,0 @@
-# DO NOT USE AS THIS IS NOW HANDLED DIRECTLY BY HYPRLAND
-# ACTION=="change", SUBSYSTEM=="drm", TAG+="systemd", ENV{SYSTEMD_WANTS}+="external_monitor.service"
