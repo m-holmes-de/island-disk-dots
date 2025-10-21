@@ -138,6 +138,9 @@ export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin/"
 # flow9
 export PATH="$PATH:$HOME/Projects/flow9/bin"
 
+# STOP CLAUDE FROM AUTOUPDATING
+export DISABLE_AUTOUPDATER=1
+
 ###########################
 # SOURCE SOME SAUCY STUFF #
 ###########################
@@ -152,10 +155,11 @@ alias c='clear'
 alias ls='eza --color=always --icons --long'
 alias ll='eza --color=always --icons --long --all'
 alias tree='eza --color=always --icons --long --all --tree --level=3'
-alias lg = 'lazygit'
+alias lg='lazygit'
 alias cat='bat'
 alias os='fastfetch -c $HOME/.config/fastfetch/fastfetch.jsonc'
 alias nvex='NVIM_APPNAME=nvex nvim'
 alias nver='NVIM_APPNAME=nver nvim'
 alias vscode-nvim='NVIM_APPNAME=vscode-nvim nvim'
-alias hyp='Hyprland'
+alias hyp='uwsm start hyprland.desktop'
+alias ff='find ./ | fzf'
