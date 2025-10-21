@@ -1,0 +1,143 @@
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "JetBrainsMono Nerd Font";
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background: transparent;
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+/* Rose Pine Color Palette */
+@define-color base #191724;
+@define-color surface #1f1d2e;
+@define-color overlay #26233a;
+@define-color muted #6e6a86;
+@define-color subtle #908caa;
+@define-color text #e0def4;
+@define-color love #eb6f92;
+@define-color gold #f6c177;
+@define-color rose #ebbcba;
+@define-color pine #31748f;
+@define-color foam #9ccfd8;
+@define-color iris #c4a7e7;
+
+/* Main bar styling */
+#workspaces,
+#clock,
+#cpu,
+#memory,
+#battery,
+#network,
+#pulseaudio,
+#tray {
+    background: @base;
+    padding: 0 12px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    color: @text;
+}
+
+/* Workspaces */
+#workspaces {
+    padding: 0 4px;
+}
+
+#workspaces button {
+    padding: 0 6px;
+    margin: 2px;
+    color: @subtle;
+    background: transparent;
+    border-radius: 4px;
+    min-width: 20px;
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+#workspaces button:hover {
+    color: @text;
+    background: @overlay;
+    box-shadow: 0 0 8px rgba(49, 116, 143, 0.3);
+}
+
+#workspaces button.active {
+    color: @text;
+    background: @pine;
+    box-shadow: 0 0 12px rgba(49, 116, 143, 0.5);
+}
+
+#workspaces button.active:hover {
+    background: @foam;
+    box-shadow: 0 0 16px rgba(156, 207, 216, 0.6);
+}
+
+#workspaces button.urgent {
+    color: @text;
+    background: @love;
+    box-shadow: 0 0 12px rgba(235, 111, 146, 0.5);
+}
+
+/* Clock */
+#clock {
+    font-weight: bold;
+}
+
+/* Battery states */
+#battery.warning:not(.charging) {
+    color: @gold;
+}
+
+#battery.critical:not(.charging) {
+    color: @love;
+    background-color: @overlay;
+}
+
+/* Network disconnected */
+#network.disconnected {
+    color: @muted;
+}
+
+/* Pulseaudio muted */
+#pulseaudio.muted {
+    color: @muted;
+}
+
+/* System group */
+#group-system {
+    background: @base;
+    padding: 0;
+    margin: 4px 2px;
+    border-radius: 8px;
+}
+
+/* Tray */
+#tray {
+    padding: 0 8px;
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background-color: @love;
+}
+
+/* Tooltips */
+tooltip {
+    background: @surface;
+    border: 2px solid @pine;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+tooltip label {
+    color: @text;
+    font-size: 12px;
+}
