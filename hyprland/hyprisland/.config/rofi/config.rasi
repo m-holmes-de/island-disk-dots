@@ -1,0 +1,177 @@
+configuration {
+    modi: "drun,run,window";
+    show-icons: true;
+    terminal: "ghostty";
+    drun-display-format: "{name}";
+    location: 0;
+    disable-history: false;
+    hide-scrollbar: true;
+    display-drun: "Applications";
+    display-run: "Run";
+    display-window: "Windows";
+    sidebar-mode: false;
+}
+
+* {
+    /* Rose Pine with Black Background */
+    bg-col:  #000000dd;
+    bg-col-light: #0a0a0add;
+    bg-col-hover: #151515dd;
+    border-col: #6e6a86;
+    selected-col: #1f1d2e60;
+    blue: #9ccfd8;
+    fg-col: #e0def4;
+    fg-col-dim: #908caa;
+    fg-col2: #eb6f92;
+    grey: #6e6a86;
+    rose: #ebbcba;
+    gold: #f6c177;
+    pine: #31748f;
+    foam: #9ccfd8;
+    iris: #c4a7e7;
+    muted: #6e6a86;
+
+    background-color: transparent;
+    text-color: @fg-col;
+    font: "JetBrainsMono Nerd Font 13";
+}
+
+window {
+    transparency: "real";
+    background-color: @bg-col;
+    width: 720px;
+    border-radius: 16px;
+    border: 1px;
+    border-color: @muted;
+    padding: 0px;
+    /* Spotlight-style centered positioning */
+    location: center;
+    anchor: center;
+    y-offset: -120;
+}
+
+mainbox {
+    background-color: transparent;
+    padding: 24px;
+    spacing: 16px;
+}
+
+/* Search input area - Spotlight style */
+inputbar {
+    background-color: @bg-col-light;
+    border-radius: 12px;
+    padding: 16px 20px;
+    spacing: 12px;
+    children: [prompt, entry];
+    border: 1px;
+    border-color: @muted;
+}
+
+prompt {
+    enabled: true;
+    text-color: @iris;
+    background-color: transparent;
+}
+
+entry {
+    placeholder: "Search applications...";
+    placeholder-color: @grey;
+    text-color: @fg-col;
+    background-color: transparent;
+    vertical-align: 0.5;
+}
+
+/* Results list - clean and spacious */
+listview {
+    background-color: transparent;
+    padding: 8px 0px;
+    spacing: 4px;
+    columns: 1;
+    lines: 8;
+    scrollbar: false;
+    fixed-height: true;
+    cycle: false;
+}
+
+element {
+    background-color: transparent;
+    text-color: @fg-col;
+    padding: 12px 16px;
+    spacing: 12px;
+    border-radius: 10px;
+    orientation: horizontal;
+    children: [element-icon, element-text];
+}
+
+element normal.normal {
+    background-color: transparent;
+    text-color: @fg-col;
+}
+
+element alternate.normal {
+    background-color: transparent;
+    text-color: @fg-col;
+}
+
+element selected.normal {
+    background-color: @selected-col;
+    text-color: @iris;
+    border: 1px;
+    border-color: @iris;
+}
+
+element-icon {
+    background-color: transparent;
+    size: 32px;
+    vertical-align: 0.5;
+}
+
+element-text {
+    background-color: transparent;
+    text-color: inherit;
+    vertical-align: 0.5;
+}
+
+/* Mode switcher at bottom - minimal pills */
+mode-switcher {
+    background-color: @bg-col-light;
+    border-radius: 10px;
+    padding: 8px;
+    spacing: 8px;
+    margin: 8px 0px 0px 0px;
+}
+
+button {
+    background-color: transparent;
+    text-color: @grey;
+    padding: 8px 16px;
+    border-radius: 8px;
+    vertical-align: 0.5;
+    horizontal-align: 0.5;
+}
+
+button selected {
+    background-color: @iris;
+    text-color: @bg-col;
+}
+
+/* Message area */
+message {
+    background-color: transparent;
+    padding: 12px;
+    margin: 8px 0px;
+}
+
+textbox {
+    background-color: @bg-col-light;
+    text-color: @iris;
+    padding: 12px 16px;
+    border-radius: 10px;
+}
+
+/* Error messages */
+error-message {
+    background-color: @bg-col;
+    padding: 20px;
+    border-radius: 12px;
+}

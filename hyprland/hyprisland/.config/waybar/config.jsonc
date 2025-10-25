@@ -1,0 +1,118 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  "spacing": 4,
+  "modules-left": [
+    "hyprland/workspaces"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "group/system",
+    "pulseaudio",
+    "network",
+    "battery",
+    "tray"
+  ],
+  "hyprland/workspaces": {
+    "format": "{name}",
+    "persistent-workspaces": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": []
+    },
+    "on-click": "activate"
+  },
+  "group/system": {
+    "orientation": "inherit",
+    "modules": [
+      "cpu",
+      "memory"
+    ]
+  },
+  "clock": {
+    "format": "󰥔 {:%H:%M - %d}",
+    "format-alt": "󰃭 {:%A, %B %d, %Y (%H:%M:%S)}",
+    "tooltip-format": "<tt><small>{calendar}</small></tt>",
+    "calendar": {
+      "mode": "year",
+      "mode-mon-col": 3,
+      "weeks-pos": "right",
+      "on-scroll": 1,
+      "format": {
+        "months": "<span color='#ebbcba'><b>{}</b></span>",
+        "days": "<span color='#e0def4'><b>{}</b></span>",
+        "weeks": "<span color='#9ccfd8'><b>W{}</b></span>",
+        "weekdays": "<span color='#f6c177'><b>{}</b></span>",
+        "today": "<span color='#eb6f92'><b><u>{}</u></b></span>"
+      }
+    }
+  },
+  "cpu": {
+    "format": "<span color='#9ccfd8'>󰍛</span> {usage}%",
+    "tooltip-format": "CPU Usage: {usage}%\nLoad: {load}"
+  },
+  "memory": {
+    "format": "<span color='#c4a7e7'>󰘚</span> {percentage}%",
+    "tooltip-format": "RAM: {used:0.1f}G / {total:0.1f}G ({percentage}%)\nSwap: {swapUsed:0.1f}G / {swapTotal:0.1f}G"
+  },
+  "battery": {
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "<span color='#f6c177'>{icon}</span> {capacity}%",
+    "format-charging": "<span color='#31748f'>󰂄</span> {capacity}%",
+    "format-plugged": "<span color='#31748f'>󰚥</span> {capacity}%",
+    "format-alt": "{icon} {time}",
+    "format-icons": [
+      "󰂎",
+      "󰁺",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾",
+      "󰁿",
+      "󰂀",
+      "󰂁",
+      "󰂂",
+      "󰁹"
+    ],
+    "tooltip-format": "{capacity}% {timeTo}\nPower: {power}W"
+  },
+  "network": {
+    "format-wifi": "<span color='#9ccfd8'>󰖩</span> {signalStrength}%",
+    "format-ethernet": "<span color='#9ccfd8'>󰈀</span> {ipaddr}",
+    "format-disconnected": "<span color='#6e6a86'>󰖪</span> Disconnected",
+    "tooltip-format-wifi": "Network: {essid}\nSignal: {signalStrength}%\nFrequency: {frequency}MHz\nIP: {ipaddr}/{cidr}",
+    "tooltip-format-ethernet": "Network: {ifname}\nIP: {ipaddr}/{cidr}\nGateway: {gwaddr}",
+    "tooltip-format-disconnected": "Network disconnected",
+    "on-click": "ghostty --title=impala -e impala"
+  },
+  "pulseaudio": {
+    "format": "<span color='#ebbcba'>{icon}</span> {volume}%",
+    "format-muted": "<span color='#6e6a86'>󰝟</span> {volume}%",
+    "format-icons": {
+      "headphone": "󰋋",
+      "hands-free": "󱡏",
+      "headset": "󰋎",
+      "phone": "󰏲",
+      "portable": "󰏲",
+      "car": "󰄋",
+      "default": [
+        "󰕿",
+        "󰖀",
+        "󰕾"
+      ]
+    },
+    "tooltip-format": "Volume: {volume}%\nDevice: {desc}",
+    "on-click": "pavucontrol"
+  },
+  "tray": {
+    "icon-size": 18,
+    "spacing": 10
+  }
+}

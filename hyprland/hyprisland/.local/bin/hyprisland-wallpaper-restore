@@ -1,0 +1,28 @@
+#!/bin/bash
+# Restore wallpaper on Hyprland startup
+# Initializes swww and loads last used wallpaper
+
+# Start swww daemon
+swww-daemon &
+sleep 1
+
+# Check if we have a saved wallpaper
+STATE_FILE="$HOME/.config/hypr/current_wallpaper"
+
+if [ -f "$STATE_FILE" ]; then
+    wallpaper=$(cat "$STATE_FILE")
+    if [ -f "$wallpaper" ]; then
+        swww img "$wallpaper" --transition-type fade --transition-duration 1
+        exit 0
+    fi
+fi
+
+# Fallback: use a random wallpaper from the directory
+WALLPAPER_DIR="$HOME/wallpaper"
+if [ -d "$WALLPAPER_DIR" ]; then
+    wallpaper=$(find "$WALLPAPER_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" \) | shuf -n 1)
+    if [ -n "$wallpaper" ]; then
+        swww img "$wallpaper" --transition-type fade --transition-duration 1
+        echo "$wallpaper" > "$STATE_FILE"
+    fi
+fi

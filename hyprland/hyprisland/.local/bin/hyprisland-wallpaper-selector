@@ -1,0 +1,85 @@
+#!/bin/bash
+# Rofi wallpaper selector for Hyprland with thumbnail previews
+# Uses swww for wallpaper management
+
+WALLPAPER_DIR="$HOME/wallpaper"
+THUMB_DIR="$HOME/.cache/wallpaper-thumbs"
+THUMB_SIZE="128"
+
+# Check if swww is installed
+if ! command -v swww &> /dev/null; then
+    notify-send "Wallpaper Selector" "swww is not installed. Install it with: sudo pacman -S swww" -u critical
+    exit 1
+fi
+
+# Check if swww daemon is running, start if not
+if ! pgrep -x swww-daemon > /dev/null; then
+    swww-daemon &
+    sleep 1
+fi
+
+# Create thumbnail directory if it doesn't exist
+mkdir -p "$THUMB_DIR"
+
+# Get list of wallpapers
+cd "$WALLPAPER_DIR" || exit 1
+
+# Generate thumbnails for wallpapers that don't have one
+shopt -s nullglob
+for img in *.jpg *.jpeg *.png *.webp *.gif; do
+    [ -f "$img" ] || continue
+
+    thumb_name="${img%.*}.png"
+    thumb_path="$THUMB_DIR/$thumb_name"
+
+    # Generate thumbnail if it doesn't exist or is older than the original
+    if [ ! -f "$thumb_path" ] || [ "$img" -nt "$thumb_path" ]; then
+        ffmpeg -i "$img" -vf "scale=${THUMB_SIZE}:${THUMB_SIZE}:force_original_aspect_ratio=increase,crop=${THUMB_SIZE}:${THUMB_SIZE}" \
+            "$thumb_path" -y -loglevel quiet 2>/dev/null
+    fi
+done
+
+# Create a temporary file with wallpaper entries for rofi
+temp_file=$(mktemp)
+for img in *.jpg *.jpeg *.png *.webp *.gif; do
+    [ -f "$img" ] || continue
+    thumb_name="${img%.*}.png"
+    thumb_path="$THUMB_DIR/$thumb_name"
+    echo -en "$img\0icon\x1f$thumb_path\n" >> "$temp_file"
+done
+shopt -u nullglob
+
+# Use rofi to select wallpaper with thumbnail previews
+selected=$(cat "$temp_file" | rofi -dmenu \
+    -i \
+    -p "Select Wallpaper" \
+    -show-icons \
+    -theme-str 'window {width: 720px;}' \
+    -theme-str 'listview {lines: 8;}' \
+    -theme-str 'element-icon {size: 2.5em;}')
+
+rm -f "$temp_file"
+
+# Exit if nothing selected
+if [ -z "$selected" ]; then
+    exit 0
+fi
+
+# Set wallpaper with swww
+wallpaper_path="$WALLPAPER_DIR/$selected"
+
+# Get current monitor
+monitor=$(hyprctl monitors -j | jq -r '.[0].name')
+
+# Apply wallpaper with fade transition
+swww img "$wallpaper_path" \
+    --transition-type fade \
+    --transition-duration 1.5 \
+    --transition-fps 60 \
+    --outputs "$monitor"
+
+# Save the current wallpaper to a state file
+echo "$wallpaper_path" > "$HOME/.config/hypr/current_wallpaper"
+
+# Send notification
+notify-send "Wallpaper Changed" "Applied: $selected" -i "$wallpaper_path"

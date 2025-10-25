@@ -6,13 +6,12 @@ if [[ -f "/opt/homebrew/bin/brew" ]] then
 fi
 
 ###########################
-# USE UWSM TO LAUNCH HYPR #
+# USE UWSM TO LAUNCH HYPR on TTY1 #
 ###########################
-if [[ $(tty) == /dev/tty1 && -z $TMUX ]]; then
-  if uwsm check may-start && uwsm select; then
-    exec uwsm start default
-  fi
-fi
+
+# if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then
+#   exec uwsm start hyprland-uwsm.desktop
+# fi
 
 ###########################
 # GET YAZI TO CHANGE CWD  #
@@ -72,9 +71,18 @@ export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense' # optional
 zstyle ':completion:*' format $'\e[2;37mCompleting %d\e[m'
 source <(carapace _carapace)
 
-# Keybindings
-bindkey -e # ENABLE EMACS MDE
-# bindkey -v # ENABLE VIM MODE
+###########################
+# VIM MODE #
+###########################
+
+# bindkey -e # ENABLE EMACS MDE
+bindkey -v # ENABLE VIM MODE
+export KEYTIMEOUT=1
+autoload edit-command-line
+zle -N edit-command-line
+bindkey -M vicmd v edit-command-line
+
+# KEYBINDINGS #
 bindkey '^p' history-search-backward
 bindkey '^n' history-search-forward
 bindkey '^[w' kill-region
@@ -110,7 +118,24 @@ zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'exa --color=always --icons 
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
-# Set Starship Promt
+# Change cursor shape for different vi modes (must be before starship init)
+function zle-keymap-select {
+  if [[ ${KEYMAP} == vicmd ]] || [[ $1 = 'block' ]]; then
+    echo -ne '\e[1 q' # block cursor
+  elif [[ ${KEYMAP} == main ]] || [[ ${KEYMAP} == viins ]] || [[ ${KEYMAP} = '' ]] || [[ $1 = 'beam' ]]; then
+    echo -ne '\e[5 q' # beam cursor
+  fi
+}
+
+# Initialize with beam cursor
+zle-line-init() {
+  echo -ne '\e[5 q'
+}
+
+zle -N zle-keymap-select
+zle -N zle-line-init
+
+# Set Starship Prompt
 eval "$(starship init zsh)"
 
 ###########################
@@ -144,7 +169,9 @@ export DISABLE_AUTOUPDATER=1
 ###########################
 # SOURCE SOME SAUCY STUFF #
 ###########################
-source $HOME/.api/avante_anthropic_api
+if [ -f "$HOME/.api/avante_anthropic_api" ]; then
+  source $HOME/.api/avante_anthropic_api
+fi
 
 ###########################
 # ALIASES #

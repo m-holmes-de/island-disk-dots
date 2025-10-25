@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+# Rofi power menu script
+
+# Options
+shutdown="󰐥 Shutdown"
+reboot="󰜉 Restart"
+suspend="󰒲 Suspend"
+lock="󰌾 Lock"
+logout="󰍃 Logout"
+
+# Rofi command
+rofi_cmd() {
+    rofi -dmenu \
+        -p "Power Menu" \
+        -theme-str 'window {width: 400px;}' \
+        -theme-str 'listview {lines: 5;}'
+}
+
+# Show menu
+chosen="$(echo -e "$lock\n$logout\n$suspend\n$reboot\n$shutdown" | rofi_cmd)"
+
+# Execute command
+case $chosen in
+    $shutdown)
+        systemctl poweroff
+        ;;
+    $reboot)
+        systemctl reboot
+        ;;
+    $suspend)
+        systemctl suspend
+        ;;
+    $lock)
+        loginctl lock-session
+        ;;
+    $logout)
+        hyprctl dispatch exit
+        ;;
+esac

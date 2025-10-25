@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Search all packages with yay and install selected one
+yay -Slq | fzf --preview 'yay -Si {}' --preview-window=right:60%:wrap | xargs -ro yay -S
