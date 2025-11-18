@@ -1,20 +1,27 @@
-font-family = JetBrainsMonoNL Nerd Font
-font-size = 12
-font-style = Light
-adjust-cell-height = 7
-adjust-cell-width = 0
-window-padding-y = 0,0
-window-padding-x = 0,0
-# theme = catppuccin-mocha
-theme = Rose Pine
-title = " "
-cursor-style = block
+# Dynamic theme colors
+config-file = ?"~/.config/omarchy/current/theme/ghostty.conf"
+
+# Font
+font-family = "CaskaydiaMono Nerd Font"
+font-style = Regular
+font-size = 9
+
+# Window
+window-theme = ghostty
+window-padding-x = 14
+window-padding-y = 14
+confirm-close-surface=false
+resize-overlay = never
+gtk-toolbar-style = flat
+
+# Cursor styling
+cursor-style = "block"
 cursor-style-blink = false
-macos-titlebar-proxy-icon = hidden
-shell-integration-features = no-cursor
-window-decoration = none
-# macos-option-as-alt = left
-# background = "#24273a"
-# background-opacity = 0.98
-background = #000000
-background-blur = true
+
+# Cursor styling + SSH session terminfo
+# (all shell integration options must be passed together)
+shell-integration-features = no-cursor,ssh-env
+
+# Keyboard bindings
+keybind = shift+insert=paste_from_clipboard
+keybind = control+insert=copy_to_clipboard
