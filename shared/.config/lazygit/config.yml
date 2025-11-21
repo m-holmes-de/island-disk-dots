@@ -1,0 +1,20 @@
+gui:
+  # Show only initials for author name in commits view
+  commitAuthorShortLength: 2
+  # Length when expanded
+  commitAuthorLongLength: 10
+  # Shorter commit hash
+  commitHashLength: 6
+  # Disable commit message length indicator if desired
+  commitLength:
+    show: false
+
+git:
+  log:
+    # Control when git graph is shown
+    # Options: 'always' | 'never' | 'when-maximised'
+    showGraph: 'always'
+    # Show all branches in graph
+    showWholeGraph: false
+    # Commit ordering - topo-order makes graph easier to read
+    order: 'topo-order'

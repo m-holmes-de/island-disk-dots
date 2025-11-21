@@ -85,6 +85,7 @@ bindkey -M vicmd v edit-command-line
 # KEYBINDINGS #
 bindkey '^p' history-search-backward
 bindkey '^n' history-search-forward
+bindkey '^y' autosuggest-accept
 bindkey '^[w' kill-region
 bindkey -s ^f "tmux-sessionizer\n"
 
@@ -121,9 +122,9 @@ eval "$(zoxide init --cmd cd zsh)"
 # Change cursor shape for different vi modes (must be before starship init)
 function zle-keymap-select {
   if [[ ${KEYMAP} == vicmd ]] || [[ $1 = 'block' ]]; then
-    echo -ne '\e[1 q' # block cursor
+    echo -ne '\e[2 q' # steady block cursor
   elif [[ ${KEYMAP} == main ]] || [[ ${KEYMAP} == viins ]] || [[ ${KEYMAP} = '' ]] || [[ $1 = 'beam' ]]; then
-    echo -ne '\e[5 q' # beam cursor
+    echo -ne '\e[5 q' # blinking bar cursor
   fi
 }
 

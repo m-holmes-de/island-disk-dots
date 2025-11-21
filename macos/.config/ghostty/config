@@ -1,5 +1,5 @@
 font-family = JetBrainsMono Nerd Font
-font-size = 18
+font-size = 15
 font-style = Regular 
 adjust-cell-height = 8
 adjust-cell-width = 0
@@ -14,6 +14,7 @@ macos-titlebar-proxy-icon = hidden
 shell-integration-features = no-cursor
 window-theme = dark
 # macos-option-as-alt = left
-background = "#000000"
-background-opacity = 0.92
+background = "#0d1117"
+background-opacity = 0.95
 background-blur = true
+clipboard-read = allow
