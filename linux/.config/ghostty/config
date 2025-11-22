@@ -20,3 +20,6 @@ window-theme = dark
 background = "#000000"
 background-opacity = 0.92
 background-blur = true
+
+# Slowdown mouse scrolling
+mouse-scroll-multiplier = 0.95
