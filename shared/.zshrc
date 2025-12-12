@@ -160,6 +160,12 @@ export PATH="$PATH:$HOME/.cargo"
 export PATH="$PATH:$HOME/.cargo/bin"
 export PATH="$PATH:$HOME/.local/bin"
 export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin/"
+export PATH="$PATH:$HOME/.config/emacs/bin"
+
+# Colima Docker socket (macOS only)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+fi
 
 # flow9
 export PATH="$PATH:$HOME/Projects/flow9/bin"
@@ -191,3 +197,13 @@ alias nver='NVIM_APPNAME=nver nvim'
 alias vscode-nvim='NVIM_APPNAME=vscode-nvim nvim'
 alias hyp='uwsm start hyprland.desktop'
 alias ff='find ./ | fzf'
+
+# Docker compose wrapper (redirects 'docker compose' to 'docker-compose')
+docker() {
+  if [[ $1 == "compose" ]]; then
+    shift
+    command docker-compose "$@"
+  else
+    command docker "$@"
+  fi
+}
