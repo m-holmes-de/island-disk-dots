@@ -6,20 +6,36 @@ font-size = 12
 font-style = Regular 
 adjust-cell-height = 8
 adjust-cell-width = 0
-window-padding-y = 2,2
+window-padding-x = 4
+window-padding-y = 4
 # theme = catppuccin-mocha
 theme = Rose Pine
 title = " "
 cursor-opacity = 0.8
 cursor-style = block
 cursor-style-blink = false
-macos-titlebar-proxy-icon = hidden
 shell-integration-features = no-cursor
 window-theme = dark
-# macos-option-as-alt = left
 background = "#000000"
 background-opacity = 0.92
 background-blur = true
+split-divider-color = #303030
+unfocused-split-opacity = 0.95
 
 # Slowdown mouse scrolling
 mouse-scroll-multiplier = 0.95
+
+# Vim-style pane navigation
+keybind = ctrl+h=goto_split:left
+keybind = ctrl+j=goto_split:bottom
+keybind = ctrl+k=goto_split:top
+keybind = ctrl+l=goto_split:right
+
+# Tmux-style split creation (ctrl-space as leader)
+keybind = ctrl+space>h=new_split:left
+keybind = ctrl+space>j=new_split:down
+keybind = ctrl+space>k=new_split:up
+keybind = ctrl+space>l=new_split:right
+keybind = ctrl+space>x=close_surface
+keybind = ctrl+space>m=toggle_split_zoom
+keybind = ctrl+space>t=toggle_quick_terminal
