@@ -17,7 +17,7 @@ tmux rename-window -t "$SESSION:1" 'code'
 tmux new-window -t "$SESSION:2" -n 'server'
 tmux new-window -t "$SESSION:3" -n 'term'
 tmux new-window -t "$SESSION:4" -n 'yazi' 'yazi'
-tmux new-window -t "$SESSION:5" -n 'git'
+tmux new-window -t "$SESSION:5" -n 'git' 'lazygit'
 
 # Go back to first window
 tmux select-window -t "$SESSION:1"

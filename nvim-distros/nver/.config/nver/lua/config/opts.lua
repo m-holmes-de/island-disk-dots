@@ -56,3 +56,6 @@ vim.opt.undofile = true
 
 -- Set the default border for all floating windows
 vim.opt.winborder = 'rounded'
+
+-- Hide end-of-buffer tildes
+vim.opt.fillchars = { eob = " " }

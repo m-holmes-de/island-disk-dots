@@ -1,13 +1,13 @@
 font-family = JetBrainsMono Nerd Font
 font-size = 15
-font-style = Regular 
+font-style = Medium
 adjust-cell-height = 8
 adjust-cell-width = 0
 window-padding-x = 6
 window-padding-y = 6
 window-save-state = always
-# theme = catppuccin-mocha
-theme = Rose Pine
+theme = Rose Pine Moon
+# theme = Catppuccin Mocha
 title = " "
 cursor-opacity = 0.8
 cursor-style = block
@@ -18,7 +18,12 @@ window-decoration = false
 shell-integration-features = no-cursor
 window-theme = dark
 # macos-option-as-alt = left
-background = "#0d1117"
+# Custom background colors
+# background = #0d1117 # GitHub dark background
+# background = #16161e # Subtle warm dark gray - easy on eyes, minimal
+# background = #191724 # Rose Pine base - deep purple-tinted dark
+# Darker purple-tinted - blacker with subtle purple
+background = #1a1824
 background-opacity = 1
 background-blur = false
 split-divider-color = #303030
@@ -39,3 +44,4 @@ clipboard-read = allow
 # keybind = ctrl+space>x=close_surface
 # keybind = ctrl+space>m=toggle_split_zoom
 # keybind = ctrl+space>t=toggle_quick_terminal
+keybind = shift+enter=text:\x1b\r
