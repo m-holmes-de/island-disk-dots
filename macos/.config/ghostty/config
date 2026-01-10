@@ -1,7 +1,7 @@
 font-family = JetBrainsMono Nerd Font
 font-size = 15
-font-style = Medium
-adjust-cell-height = 8
+font-style = Bold
+adjust-cell-height = 0
 adjust-cell-width = 0
 window-padding-x = 6
 window-padding-y = 6
@@ -12,9 +12,8 @@ title = " "
 cursor-opacity = 0.8
 cursor-style = block
 cursor-style-blink = false
-macos-titlebar-style = hidden
-macos-titlebar-proxy-icon = hidden
-window-decoration = false
+macos-titlebar-style = transparent
+window-decoration = true
 shell-integration-features = no-cursor
 window-theme = dark
 # macos-option-as-alt = left
@@ -22,8 +21,8 @@ window-theme = dark
 # background = #0d1117 # GitHub dark background
 # background = #16161e # Subtle warm dark gray - easy on eyes, minimal
 # background = #191724 # Rose Pine base - deep purple-tinted dark
-# Darker purple-tinted - blacker with subtle purple
-background = #1a1824
+# Rose Pine Moon default background
+background = #232136
 background-opacity = 1
 background-blur = false
 split-divider-color = #303030

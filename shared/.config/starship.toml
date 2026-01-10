@@ -14,6 +14,8 @@ $aws\
 $docker_context\
 $jobs\
 $cmd_duration\
+$username\
+$hostname\
 $line_break\
 $character"""
 
@@ -101,6 +103,17 @@ format = '[$symbol]($style)'
 min_time = 500
 style = 'fg:gray'
 format = '[$duration]($style)'
+
+[username]
+show_always = true
+style_user = 'fg:blue'
+style_root = 'fg:red'
+format = '[ $user]($style)'
+
+[hostname]
+ssh_only = false
+style = 'fg:blue'
+format = '[@$hostname ]($style)'
 
 [palettes.catppuccin_frappe]
 rosewater = "#f2d5cf"

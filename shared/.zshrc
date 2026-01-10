@@ -173,6 +173,9 @@ export PATH="$PATH:$HOME/Projects/flow9/bin"
 # STOP CLAUDE FROM AUTOUPDATING
 export DISABLE_AUTOUPDATER=1
 
+# Mise activation
+eval "$(mise activate zsh)"
+
 ###########################
 # SOURCE SOME SAUCY STUFF #
 ###########################
@@ -198,12 +201,3 @@ alias vscode-nvim='NVIM_APPNAME=vscode-nvim nvim'
 alias hyp='uwsm start hyprland.desktop'
 alias ff='find ./ | fzf'
 
-# Docker compose wrapper (redirects 'docker compose' to 'docker-compose')
-docker() {
-  if [[ $1 == "compose" ]]; then
-    shift
-    command docker-compose "$@"
-  else
-    command docker "$@"
-  fi
-}
