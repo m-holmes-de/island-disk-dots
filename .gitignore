@@ -16,3 +16,4 @@
 .claude/
 nvim-distros/nvim-lazy/.config/nvim/lazyvim.json
 nvim-distros/nvim-lazy/.config/nvim/lazy-lock.json
+shared/.local/bin/claude
