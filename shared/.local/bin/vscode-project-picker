@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# VSCode Project Picker - similar to tmux-sessionizer but for VSCode
+# Opens selected project in a new VSCode window
+
+if [[ $# -eq 1 ]]; then
+    selected=$1
+else
+    # Find projects in your common directories
+    selected=$(find ~/Projects ~/island-disk-dots -mindepth 1 -maxdepth 1 -type d | fzf --prompt="Select project to open in VSCode: ")
+fi
+
+if [[ -z $selected ]]; then
+    exit 0
+fi
+
+# Open in new VSCode window
+code -n "$selected"
