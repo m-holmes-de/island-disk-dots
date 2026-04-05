@@ -3,7 +3,7 @@
 if [[ $# -eq 1 ]]; then
   selected=$1
 else
-  selected=$(find ~/Projects ~/island-disk-dots -mindepth 1 -maxdepth 1 -type d | fzf)
+  selected=$({ echo ~/Projects; echo ~/island-disk-dots; find ~/Projects ~/island-disk-dots -mindepth 1 -maxdepth 1 -type d; } | fzf)
 fi
 
 if [[ -z $selected ]]; then
@@ -13,13 +13,47 @@ fi
 selected_name=$(basename "$selected" | tr . _)
 tmux_running=$(pgrep tmux)
 
+setup_windows() {
+  local session=$1 dir=$2
+  tmux rename-window -t "$session:1" 'claude'
+  tmux new-window -t "$session:2" -n 'server' -c "$dir"
+  tmux new-window -t "$session:3" -n 'yazi' -c "$dir"
+  tmux new-window -t "$session:4" -n 'term' -c "$dir"
+  tmux select-window -t "$session:1"
+}
+
+apply_session_color() {
+  local dir=$1 session=$2
+  local metamind="$dir/.metamind-instance.json"
+  [[ -f "$metamind" ]] || return
+
+  local color
+  color=$(jq -r '.branchColor // empty' "$metamind" 2>/dev/null)
+  [[ -n "$color" ]] || return
+
+  # Pick black or white fg based on luminance
+  local r g b
+  r=$(printf '%d' "0x${color:1:2}")
+  g=$(printf '%d' "0x${color:3:2}")
+  b=$(printf '%d' "0x${color:5:2}")
+  local lum=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+  local fg="black"
+  (( lum < 128 )) && fg="white"
+
+  tmux set-option -t "$session" status-left "#[fg=$fg,bg=$color,bold] #S #[bg=default] "
+}
+
 if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
   tmux new-session -s "$selected_name" -c "$selected"
+  setup_windows "$selected_name" "$selected"
+  apply_session_color "$selected" "$selected_name"
   exit 0
 fi
 
 if ! tmux has-session -t="$selected_name" 2>/dev/null; then
   tmux new-session -ds "$selected_name" -c "$selected"
+  setup_windows "$selected_name" "$selected"
+  apply_session_color "$selected" "$selected_name"
 fi
 
 if [[ -z $TMUX ]]; then
