@@ -2,6 +2,6 @@
 
 install_packages \
     ghostty \
-    chromium \
+    google-chrome \
     nautilus \
     impala
