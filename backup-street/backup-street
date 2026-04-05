@@ -102,10 +102,10 @@ select_destination() {
   mapfile -t mounts < <(find_mount_points)
 
   if [[ ${#mounts[@]} -eq 0 ]]; then
-    error "No external drives found."
-    echo ""
-    info "Mount an external drive and try again, or specify a path manually."
-    echo ""
+    error "No external drives found." >&2
+    echo "" >&2
+    info "Mount an external drive and try again, or specify a path manually." >&2
+    echo "" >&2
 
     if $USE_GUM; then
       dest=$(gum input --placeholder "/path/to/backup/destination" --prompt "  Path: ")
@@ -120,8 +120,8 @@ select_destination() {
     return
   fi
 
-  info "Found external drives:"
-  echo ""
+  info "Found external drives:" >&2
+  echo "" >&2
 
   if $USE_GUM; then
     # Add manual option
@@ -135,11 +135,11 @@ select_destination() {
     for m in "${mounts[@]}"; do
       local size
       size=$(df -h "$m" 2>/dev/null | awk 'NR==2{print $4 " free"}')
-      echo -e "    ${C_BOLD}$i)${C_NC} $m ${C_DIM}($size)${C_NC}"
+      echo -e "    ${C_BOLD}$i)${C_NC} $m ${C_DIM}($size)${C_NC}" >&2
       ((i++))
     done
-    echo -e "    ${C_BOLD}$i)${C_NC} Enter path manually"
-    echo ""
+    echo -e "    ${C_BOLD}$i)${C_NC} Enter path manually" >&2
+    echo "" >&2
     read -rp "  Choose [1-$i]: " choice
 
     if [[ "$choice" -eq "$i" ]]; then
