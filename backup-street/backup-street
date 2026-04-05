@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Backup Street ───────────────────────────────────────────────────────────
+# Interactive rsync backup tool for your home folder.
+# Requires: rsync, fzf
+# Optional: gum (for a prettier TUI — install with: sudo pacman -S gum)
+
+BACKUP_LOG="${HOME}/.local/state/backup-street/last-backup.log"
+INTERRUPTED=false
+EXCLUDE_DEFAULTS=(
+  ".cache"
+  ".local/share/Trash"
+  "node_modules"
+  ".npm"
+  ".cargo/registry"
+  ".rustup/toolchains"
+  "__pycache__"
+  ".venv"
+  ".gradle"
+  ".m2"
+  "target"
+)
+
+# ── Detect TUI backend ─────────────────────────────────────────────────────
+USE_GUM=false
+if command -v gum &>/dev/null; then
+  USE_GUM=true
+fi
+
+# ── TUI helpers ─────────────────────────────────────────────────────────────
+C_BOLD='\033[1m'
+C_DIM='\033[2m'
+C_BLUE='\033[0;34m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[1;33m'
+C_RED='\033[0;31m'
+C_CYAN='\033[0;36m'
+C_NC='\033[0m'
+
+header() {
+  echo ""
+  if $USE_GUM; then
+    gum style --border rounded --border-foreground 63 --padding "0 2" --bold \
+      "🛣️  Backup Street" \
+      "   rsync home backup"
+  else
+    echo -e "${C_BOLD}${C_CYAN}╭──────────────────────────╮${C_NC}"
+    echo -e "${C_BOLD}${C_CYAN}│  Backup Street           │${C_NC}"
+    echo -e "${C_BOLD}${C_CYAN}│  rsync home backup       │${C_NC}"
+    echo -e "${C_BOLD}${C_CYAN}╰──────────────────────────╯${C_NC}"
+  fi
+  echo ""
+}
+
+info()    { echo -e "${C_BLUE}  ▸${C_NC} $1"; }
+success() { echo -e "${C_GREEN}  ✓${C_NC} $1"; }
+warn()    { echo -e "${C_YELLOW}  !${C_NC} $1"; }
+error()   { echo -e "${C_RED}  ✗${C_NC} $1"; }
+
+confirm() {
+  local prompt="$1"
+  if $USE_GUM; then
+    gum confirm "$prompt"
+  else
+    echo ""
+    read -rp "  $prompt [y/N] " answer
+    [[ "$answer" =~ ^[Yy] ]]
+  fi
+}
+
+# ── Step 1: Find external drives ───────────────────────────────────────────
+find_mount_points() {
+  local mounts=()
+
+  # Common mount locations for external drives
+  for base in /run/media/"$USER" /mnt /media/"$USER" /media; do
+    if [[ -d "$base" ]]; then
+      while IFS= read -r dir; do
+        # Only include actual mountpoints or directories on mounted filesystems
+        if mountpoint -q "$dir" 2>/dev/null || [[ -d "$dir" && "$base" == "/mnt" ]]; then
+          mounts+=("$dir")
+        fi
+      done < <(find "$base" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+    fi
+  done
+
+  # Also check for any non-system mountpoints
+  while IFS= read -r mp; do
+    case "$mp" in
+      /|/boot*|/home|/var*|/tmp*|/srv|/root|/run|/sys|/proc|/dev) continue ;;
+      /run/media/*|/mnt/*|/media/*) continue ;; # already handled
+      *) mounts+=("$mp") ;;
+    esac
+  done < <(findmnt -rno TARGET -t ext4,btrfs,ntfs,vfat,exfat,xfs 2>/dev/null)
+
+  printf '%s\n' "${mounts[@]}" | sort -u
+}
+
+select_destination() {
+  local mounts
+  mapfile -t mounts < <(find_mount_points)
+
+  if [[ ${#mounts[@]} -eq 0 ]]; then
+    error "No external drives found."
+    echo ""
+    info "Mount an external drive and try again, or specify a path manually."
+    echo ""
+
+    if $USE_GUM; then
+      dest=$(gum input --placeholder "/path/to/backup/destination" --prompt "  Path: ")
+    else
+      read -rp "  Path (or leave empty to exit): " dest
+    fi
+
+    if [[ -z "$dest" ]]; then
+      exit 1
+    fi
+    echo "$dest"
+    return
+  fi
+
+  info "Found external drives:"
+  echo ""
+
+  if $USE_GUM; then
+    # Add manual option
+    mounts+=("[ Enter path manually ]")
+    dest=$(printf '%s\n' "${mounts[@]}" | gum choose --header "  Select backup destination:")
+    if [[ "$dest" == "[ Enter path manually ]" ]]; then
+      dest=$(gum input --placeholder "/path/to/backup/destination" --prompt "  Path: ")
+    fi
+  else
+    local i=1
+    for m in "${mounts[@]}"; do
+      local size
+      size=$(df -h "$m" 2>/dev/null | awk 'NR==2{print $4 " free"}')
+      echo -e "    ${C_BOLD}$i)${C_NC} $m ${C_DIM}($size)${C_NC}"
+      ((i++))
+    done
+    echo -e "    ${C_BOLD}$i)${C_NC} Enter path manually"
+    echo ""
+    read -rp "  Choose [1-$i]: " choice
+
+    if [[ "$choice" -eq "$i" ]]; then
+      read -rp "  Path: " dest
+    else
+      dest="${mounts[$((choice - 1))]}"
+    fi
+  fi
+
+  echo "$dest"
+}
+
+# ── Step 2: Select folders to back up ──────────────────────────────────────
+select_folders() {
+  local home_dirs=()
+
+  # Get top-level dirs and important dotfiles/dotdirs in home
+  while IFS= read -r entry; do
+    local name
+    name=$(basename "$entry")
+    home_dirs+=("$name")
+  done < <(find "$HOME" -mindepth 1 -maxdepth 1 \( -type d -o -type f \) | sort)
+
+  if [[ ${#home_dirs[@]} -eq 0 ]]; then
+    error "No items found in home directory"
+    exit 1
+  fi
+
+  info "Select folders/files to back up from ${C_BOLD}~/${C_NC}"
+  echo ""
+
+  if $USE_GUM; then
+    local selected
+    selected=$(printf '%s\n' "${home_dirs[@]}" | \
+      gum choose --no-limit --header "  Space to select, Enter to confirm:" \
+        --selected "Projects,Documents,Pictures,Music,Videos,Desktop,island-disk-dots,.ssh,.gnupg,.local,.config,.zshrc,.zsh_aliases,.gitconfig")
+    echo "$selected"
+  else
+    # fzf multi-select
+    local selected
+    selected=$(printf '%s\n' "${home_dirs[@]}" | \
+      fzf --multi --prompt="  Select (Tab to toggle, Enter to confirm): " \
+          --header="  Folders to back up from ~/" \
+          --preview="ls -la --color=always $HOME/{} 2>/dev/null | head -20" \
+          --height=60% --reverse --border)
+    echo "$selected"
+  fi
+}
+
+# ── Step 3: Configure excludes ─────────────────────────────────────────────
+configure_excludes() {
+  info "Default exclusions:"
+  echo ""
+  for ex in "${EXCLUDE_DEFAULTS[@]}"; do
+    echo -e "    ${C_DIM}$ex${C_NC}"
+  done
+  echo ""
+
+  if confirm "Add custom exclusions?"; then
+    if $USE_GUM; then
+      local custom
+      custom=$(gum input --placeholder "pattern1,pattern2,..." --prompt "  Exclude: ")
+      IFS=',' read -ra extras <<< "$custom"
+      EXCLUDE_DEFAULTS+=("${extras[@]}")
+    else
+      read -rp "  Comma-separated patterns: " custom
+      IFS=',' read -ra extras <<< "$custom"
+      EXCLUDE_DEFAULTS+=("${extras[@]}")
+    fi
+  fi
+}
+
+# ── Step 4: Dry run & execute ──────────────────────────────────────────────
+run_backup() {
+  local dest="$1"
+  shift
+  local folders=("$@")
+
+  local backup_dir="$dest/backup-street/$(hostname)-$(date +%Y-%m-%d)"
+
+  # Build rsync args
+  local rsync_args=(-aAXv --progress --human-readable)
+  for ex in "${EXCLUDE_DEFAULTS[@]}"; do
+    rsync_args+=(--exclude="$ex")
+  done
+
+  echo ""
+  echo -e "${C_BOLD}  Backup summary${C_NC}"
+  echo -e "  ${C_DIM}─────────────────────────────────────${C_NC}"
+  echo -e "  ${C_BOLD}Destination:${C_NC} $backup_dir"
+  echo -e "  ${C_BOLD}Folders:${C_NC}"
+  for f in "${folders[@]}"; do
+    echo -e "    ${C_CYAN}~/$f${C_NC}"
+  done
+  echo -e "  ${C_BOLD}Excludes:${C_NC} ${#EXCLUDE_DEFAULTS[@]} patterns"
+  echo -e "  ${C_DIM}─────────────────────────────────────${C_NC}"
+  echo ""
+
+  # Dry run
+  if confirm "Run dry-run first?"; then
+    info "Running dry-run..."
+    echo ""
+    for f in "${folders[@]}"; do
+      local src="$HOME/$f"
+      local target="$backup_dir/$f"
+      mkdir -p "$(dirname "$target")"
+      rsync "${rsync_args[@]}" --dry-run "$src" "$target" 2>&1 | tail -5
+    done
+    echo ""
+  fi
+
+  if ! confirm "Proceed with backup?"; then
+    warn "Backup cancelled."
+    exit 0
+  fi
+
+  # Create log directory
+  mkdir -p "$(dirname "$BACKUP_LOG")"
+  mkdir -p "$backup_dir"
+
+  info "Starting backup... ${C_DIM}(Ctrl+C to stop safely after current folder)${C_NC}"
+  echo ""
+
+  # Trap SIGINT — let current rsync finish, stop before next folder
+  trap 'INTERRUPTED=true; warn "Interrupt received — finishing current folder..."' INT
+
+  local failed=0
+  local completed=0
+  for f in "${folders[@]}"; do
+    if $INTERRUPTED; then
+      warn "Skipping ~/$f (interrupted)"
+      continue
+    fi
+
+    local src="$HOME/$f"
+    local target="$backup_dir/$f"
+
+    # For files, ensure parent dir exists. For dirs, ensure target path is right.
+    if [[ -f "$src" ]]; then
+      mkdir -p "$(dirname "$target")"
+    else
+      mkdir -p "$target"
+      # rsync expects trailing slash for directory contents
+      src="$src/"
+      target="$target/"
+    fi
+
+    info "Backing up ${C_BOLD}~/$f${C_NC} ..."
+    if rsync "${rsync_args[@]}" "$src" "$target" 2>&1 | tee -a "$BACKUP_LOG"; then
+      success "$f"
+      ((completed++))
+    else
+      if $INTERRUPTED; then
+        warn "Interrupted during $f — partial copy may exist"
+      else
+        error "Failed: $f"
+      fi
+      ((failed++))
+    fi
+  done
+
+  # Restore default signal handling
+  trap - INT
+
+  echo ""
+  echo -e "  ${C_DIM}─────────────────────────────────────${C_NC}"
+  if $INTERRUPTED; then
+    warn "Backup interrupted by user."
+    info "Completed ${completed}/${#folders[@]} folders before stopping."
+    info "Partial backup at: $backup_dir"
+    echo ""
+    {
+      echo "Backup Street - $(date -Iseconds)"
+      echo "Destination: $backup_dir"
+      echo "Folders: ${folders[*]}"
+      echo "Status: interrupted (${completed}/${#folders[@]} completed)"
+    } >> "$BACKUP_LOG"
+  elif [[ $failed -eq 0 ]]; then
+    success "Backup complete! Saved to:"
+    info "$backup_dir"
+    echo ""
+    {
+      echo "Backup Street - $(date -Iseconds)"
+      echo "Destination: $backup_dir"
+      echo "Folders: ${folders[*]}"
+      echo "Status: success"
+    } >> "$BACKUP_LOG"
+  else
+    error "$failed folder(s) had errors. Check log: $BACKUP_LOG"
+  fi
+  echo ""
+}
+
+# ── Main ────────────────────────────────────────────────────────────────────
+main() {
+  header
+
+  # Check deps
+  if ! command -v rsync &>/dev/null; then
+    error "rsync not found. Install with: sudo pacman -S rsync"
+    exit 1
+  fi
+
+  if ! $USE_GUM && ! command -v fzf &>/dev/null; then
+    error "Neither gum nor fzf found. Install one: sudo pacman -S gum  OR  sudo pacman -S fzf"
+    exit 1
+  fi
+
+  # Step 1: Destination
+  info "${C_BOLD}Step 1:${C_NC} Select backup destination"
+  dest=$(select_destination)
+
+  if [[ -z "$dest" || ! -d "$dest" ]]; then
+    error "Invalid destination: $dest"
+    exit 1
+  fi
+  success "Destination: $dest"
+  echo ""
+
+  # Step 2: Folders
+  info "${C_BOLD}Step 2:${C_NC} Select folders to back up"
+  local selected_raw
+  selected_raw=$(select_folders)
+
+  if [[ -z "$selected_raw" ]]; then
+    error "No folders selected"
+    exit 1
+  fi
+
+  local folders=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && folders+=("$line")
+  done <<< "$selected_raw"
+
+  success "Selected ${#folders[@]} items"
+  echo ""
+
+  # Step 3: Excludes
+  info "${C_BOLD}Step 3:${C_NC} Configure exclusions"
+  configure_excludes
+  echo ""
+
+  # Step 4: Run
+  info "${C_BOLD}Step 4:${C_NC} Execute backup"
+  run_backup "$dest" "${folders[@]}"
+}
+
+main "$@"
