@@ -6,7 +6,9 @@ set -euo pipefail
 # Requires: rsync, fzf
 # Optional: gum (for a prettier TUI — install with: sudo pacman -S gum)
 
-BACKUP_LOG="${HOME}/.local/state/backup-street/last-backup.log"
+BACKUP_STATE="${HOME}/.local/state/backup-street"
+BACKUP_LOG="${BACKUP_STATE}/last-backup.log"
+SELECTION_CACHE="${BACKUP_STATE}/last-selection"
 INTERRUPTED=false
 EXCLUDE_DEFAULTS=(
   ".cache"
@@ -126,7 +128,7 @@ select_destination() {
   if $USE_GUM; then
     # Add manual option
     mounts+=("[ Enter path manually ]")
-    dest=$(printf '%s\n' "${mounts[@]}" | gum choose --header "  Select backup destination:")
+    dest=$(gum choose --header "  Select backup destination:" "${mounts[@]}")
     if [[ "$dest" == "[ Enter path manually ]" ]]; then
       dest=$(gum input --placeholder "/path/to/backup/destination" --prompt "  Path: ")
     fi
@@ -154,6 +156,25 @@ select_destination() {
 
 # ── Step 2: Select folders to back up ──────────────────────────────────────
 select_folders() {
+  # Check for previous selection
+  if [[ -f "$SELECTION_CACHE" ]]; then
+    local cached
+    cached=$(cat "$SELECTION_CACHE")
+    local count
+    count=$(wc -l < "$SELECTION_CACHE")
+    info "Previous selection (${count} items):" >&2
+    while IFS= read -r item; do
+      echo -e "    ${C_DIM}~/$item${C_NC}" >&2
+    done <<< "$cached"
+    echo "" >&2
+
+    if confirm "Reuse previous selection?"; then
+      echo "$cached"
+      return
+    fi
+    echo "" >&2
+  fi
+
   local home_dirs=()
 
   # Get top-level dirs and important dotfiles/dotdirs in home
@@ -168,14 +189,20 @@ select_folders() {
     exit 1
   fi
 
-  info "Select folders/files to back up from ${C_BOLD}~/${C_NC}"
-  echo ""
+  info "Select folders/files to back up from ${C_BOLD}~/${C_NC}" >&2
+  echo "" >&2
+
+  # Build --selected list from cache if available, otherwise use defaults
+  local preselected="Projects,Documents,Pictures,Music,Videos,Desktop,island-disk-dots,.ssh,.gnupg,.local,.config,.zshrc,.zsh_aliases,.gitconfig"
+  if [[ -f "$SELECTION_CACHE" ]]; then
+    preselected=$(paste -sd, "$SELECTION_CACHE")
+  fi
 
   if $USE_GUM; then
     local selected
     selected=$(printf '%s\n' "${home_dirs[@]}" | \
       gum choose --no-limit --header "  Space to select, Enter to confirm:" \
-        --selected "Projects,Documents,Pictures,Music,Videos,Desktop,island-disk-dots,.ssh,.gnupg,.local,.config,.zshrc,.zsh_aliases,.gitconfig")
+        --selected "$preselected")
     echo "$selected"
   else
     # fzf multi-select
@@ -187,6 +214,11 @@ select_folders() {
           --height=60% --reverse --border)
     echo "$selected"
   fi
+}
+
+save_selection() {
+  mkdir -p "$BACKUP_STATE"
+  printf '%s\n' "$@" > "$SELECTION_CACHE"
 }
 
 # ── Step 3: Configure excludes ─────────────────────────────────────────────
@@ -218,10 +250,10 @@ run_backup() {
   shift
   local folders=("$@")
 
-  local backup_dir="$dest/backup-street/$(hostname)-$(date +%Y-%m-%d)"
+  local backup_dir="$dest/backup-street/$(hostname)-$(date +%Y-%m-%d_%H-%M-%S)"
 
   # Build rsync args
-  local rsync_args=(-aAXv --progress --human-readable)
+  local rsync_args=(-rlptDv --progress --human-readable --no-owner --no-group)
   for ex in "${EXCLUDE_DEFAULTS[@]}"; do
     rsync_args+=(--exclude="$ex")
   done
@@ -268,6 +300,8 @@ run_backup() {
 
   local failed=0
   local completed=0
+  local start_time
+  start_time=$(date +%s)
   for f in "${folders[@]}"; do
     if $INTERRUPTED; then
       warn "Skipping ~/$f (interrupted)"
@@ -290,19 +324,34 @@ run_backup() {
     info "Backing up ${C_BOLD}~/$f${C_NC} ..."
     if rsync "${rsync_args[@]}" "$src" "$target" 2>&1 | tee -a "$BACKUP_LOG"; then
       success "$f"
-      ((completed++))
+      ((++completed))
     else
       if $INTERRUPTED; then
         warn "Interrupted during $f — partial copy may exist"
       else
         error "Failed: $f"
       fi
-      ((failed++))
+      ((++failed))
     fi
   done
 
   # Restore default signal handling
   trap - INT
+
+  # Calculate stats
+  local end_time elapsed_secs total_size
+  end_time=$(date +%s)
+  elapsed_secs=$((end_time - start_time))
+  total_size=$(du -sh "$backup_dir" 2>/dev/null | cut -f1)
+
+  local elapsed_fmt
+  if [[ $elapsed_secs -ge 3600 ]]; then
+    elapsed_fmt="$((elapsed_secs / 3600))h $((elapsed_secs % 3600 / 60))m $((elapsed_secs % 60))s"
+  elif [[ $elapsed_secs -ge 60 ]]; then
+    elapsed_fmt="$((elapsed_secs / 60))m $((elapsed_secs % 60))s"
+  else
+    elapsed_fmt="${elapsed_secs}s"
+  fi
 
   echo ""
   echo -e "  ${C_DIM}─────────────────────────────────────${C_NC}"
@@ -310,25 +359,30 @@ run_backup() {
     warn "Backup interrupted by user."
     info "Completed ${completed}/${#folders[@]} folders before stopping."
     info "Partial backup at: $backup_dir"
+    info "Size: ${C_BOLD}${total_size:-unknown}${C_NC}  Time: ${C_BOLD}${elapsed_fmt}${C_NC}"
     echo ""
     {
       echo "Backup Street - $(date -Iseconds)"
       echo "Destination: $backup_dir"
       echo "Folders: ${folders[*]}"
+      echo "Size: ${total_size:-unknown}  Time: ${elapsed_fmt}"
       echo "Status: interrupted (${completed}/${#folders[@]} completed)"
     } >> "$BACKUP_LOG"
   elif [[ $failed -eq 0 ]]; then
     success "Backup complete! Saved to:"
     info "$backup_dir"
+    info "Size: ${C_BOLD}${total_size:-unknown}${C_NC}  Time: ${C_BOLD}${elapsed_fmt}${C_NC}"
     echo ""
     {
       echo "Backup Street - $(date -Iseconds)"
       echo "Destination: $backup_dir"
       echo "Folders: ${folders[*]}"
+      echo "Size: ${total_size:-unknown}  Time: ${elapsed_fmt}"
       echo "Status: success"
     } >> "$BACKUP_LOG"
   else
     error "$failed folder(s) had errors. Check log: $BACKUP_LOG"
+    info "Size: ${C_BOLD}${total_size:-unknown}${C_NC}  Time: ${C_BOLD}${elapsed_fmt}${C_NC}"
   fi
   echo ""
 }
@@ -374,6 +428,7 @@ main() {
     [[ -n "$line" ]] && folders+=("$line")
   done <<< "$selected_raw"
 
+  save_selection "${folders[@]}"
   success "Selected ${#folders[@]} items"
   echo ""
 

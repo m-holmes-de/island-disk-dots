@@ -15,6 +15,7 @@ $docker_context\
 $jobs\
 $cmd_duration\
 $line_break\
+$username\
 $character"""
 
 add_newline = false
