@@ -117,7 +117,6 @@ zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'exa --color=always --icons 
 
 # Shell integrations
 eval "$(fzf --zsh)"
-eval "$(zoxide init --cmd cd zsh)"
 
 # Change cursor shape for different vi modes (must be before starship init)
 function zle-keymap-select {
@@ -201,3 +200,7 @@ alias vscode-nvim='NVIM_APPNAME=vscode-nvim nvim'
 alias hyp='uwsm start hyprland.desktop'
 alias ff='find ./ | fzf'
 
+###########################
+# ZOXIDE (must be last)   #
+###########################
+eval "$(zoxide init zsh)"
