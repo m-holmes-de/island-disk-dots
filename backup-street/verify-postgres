@@ -1,0 +1,329 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Verify Postgres Backup ─────────────────────────────────────────────────
+# Spins up a throwaway postgres container, restores a backup into it,
+# compares row counts against the source container, and tears down.
+#
+# Usage:
+#   verify-postgres                    # interactive: pick backup + source
+#   verify-postgres <backup-dir>       # use specific backup dir
+#
+# A "backup-dir" is a container folder like:
+#   /path/to/backup-street/<host>-<date>/postgres/<container-name>/
+#
+# Requires: docker, gzip
+
+# ── Colors ──────────────────────────────────────────────────────────────────
+C_BOLD='\033[1m'
+C_DIM='\033[2m'
+C_BLUE='\033[0;34m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[1;33m'
+C_RED='\033[0;31m'
+C_CYAN='\033[0;36m'
+C_NC='\033[0m'
+
+info()    { echo -e "${C_BLUE}  ▸${C_NC} $1"; }
+success() { echo -e "${C_GREEN}  ✓${C_NC} $1"; }
+warn()    { echo -e "${C_YELLOW}  !${C_NC} $1"; }
+error()   { echo -e "${C_RED}  ✗${C_NC} $1"; }
+
+USE_GUM=false
+command -v gum &>/dev/null && USE_GUM=true
+
+confirm() {
+  local prompt="$1"
+  if $USE_GUM; then
+    gum confirm "$prompt"
+  else
+    read -rp "  $prompt [y/N] " answer
+    [[ "$answer" =~ ^[Yy] ]]
+  fi
+}
+
+header() {
+  echo ""
+  if $USE_GUM; then
+    gum style --border rounded --border-foreground 63 --padding "0 2" --bold \
+      "🔍 Verify Postgres Backup" \
+      "   restore into throwaway container + diff"
+  else
+    echo -e "${C_BOLD}${C_CYAN}╭────────────────────────────────────╮${C_NC}"
+    echo -e "${C_BOLD}${C_CYAN}│  Verify Postgres Backup            │${C_NC}"
+    echo -e "${C_BOLD}${C_CYAN}╰────────────────────────────────────╯${C_NC}"
+  fi
+  echo ""
+}
+
+# ── Config ──────────────────────────────────────────────────────────────────
+TEST_CONTAINER="pg-restore-test-$$"
+TEST_PASSWORD="verify-$(date +%s)"
+TEST_IMAGE="postgres:18"
+
+# Find a free port starting from 5433
+find_free_port() {
+  local port=5433
+  while ss -tln 2>/dev/null | awk '{print $4}' | grep -qE ":${port}$"; do
+    ((port++))
+    [[ $port -gt 5500 ]] && { echo "no free port" >&2; return 1; }
+  done
+  echo "$port"
+}
+TEST_PORT="$(find_free_port)"
+
+# ── Cleanup trap ───────────────────────────────────────────────────────────
+cleanup() {
+  local code=$?
+  if docker ps -a --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+    echo ""
+    info "Cleaning up test container..."
+    docker rm -f "$TEST_CONTAINER" &>/dev/null || true
+    success "Removed $TEST_CONTAINER"
+  fi
+  exit $code
+}
+trap cleanup EXIT INT TERM
+
+# ── Pick backup dir ────────────────────────────────────────────────────────
+pick_backup_dir() {
+  if [[ $# -ge 1 ]]; then
+    echo "$1"
+    return
+  fi
+
+  # Find backup-street roots under common mount points
+  local candidates=()
+  for base in /run/media/"$USER"/*/backup-street /mnt/*/backup-street /media/"$USER"/*/backup-street; do
+    [[ -d "$base" ]] || continue
+    while IFS= read -r container_dir; do
+      candidates+=("$container_dir")
+    done < <(find "$base" -mindepth 3 -maxdepth 3 -type d -path '*/postgres/*' 2>/dev/null | sort -r)
+  done
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    error "No postgres backups found. Pass a path as argument."
+    exit 1
+  fi
+
+  info "Select a backup to verify:" >&2
+  if $USE_GUM; then
+    gum choose --header "  Backup dir:" "${candidates[@]}"
+  else
+    local i=1
+    for c in "${candidates[@]}"; do
+      echo -e "    ${C_BOLD}$i)${C_NC} ${c#/run/media/$USER/}" >&2
+      ((i++))
+    done
+    echo "" >&2
+    read -rp "  Choose [1-${#candidates[@]}]: " choice
+    echo "${candidates[$((choice - 1))]}"
+  fi
+}
+
+# ── Row count query ────────────────────────────────────────────────────────
+# Returns "schema.table<TAB>count" lines sorted by table, for all
+# user tables in all non-template databases.
+collect_row_counts() {
+  local mode="$1"  # "source" or "test"
+  local container user dbs
+  if [[ "$mode" == "source" ]]; then
+    container="$SOURCE_CONTAINER"
+    user="$SOURCE_USER"
+  else
+    container="$TEST_CONTAINER"
+    user="postgres"
+  fi
+
+  dbs=$(docker exec "$container" psql -U "$user" -tAc \
+    "SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres';" 2>/dev/null)
+
+  while IFS= read -r db; do
+    [[ -z "$db" ]] && continue
+    # Build a dynamic SQL that counts rows for every user table
+    local sql
+    sql=$(cat <<'EOF'
+SELECT string_agg(
+  format('SELECT %L AS db, %L AS tbl, count(*)::bigint AS n FROM %I.%I',
+         current_database(), schemaname || '.' || tablename, schemaname, tablename),
+  ' UNION ALL '
+)
+FROM pg_tables
+WHERE schemaname NOT IN ('pg_catalog','information_schema');
+EOF
+)
+    local union_sql
+    union_sql=$(docker exec "$container" psql -U "$user" -d "$db" -tAc "$sql" 2>/dev/null)
+    if [[ -n "$union_sql" && "$union_sql" != " " ]]; then
+      docker exec "$container" psql -U "$user" -d "$db" -tAF $'\t' -c \
+        "SELECT db, tbl, n FROM ($union_sql) x ORDER BY tbl" 2>/dev/null
+    fi
+  done <<< "$dbs"
+}
+
+# ── Main ────────────────────────────────────────────────────────────────────
+header
+
+# Pre-flight
+if ! command -v docker &>/dev/null; then
+  error "docker not found"
+  exit 1
+fi
+
+BACKUP_DIR="$(pick_backup_dir "$@")"
+[[ -z "$BACKUP_DIR" ]] && { error "No backup selected"; exit 1; }
+
+if [[ ! -d "$BACKUP_DIR" ]]; then
+  error "Not a directory: $BACKUP_DIR"
+  exit 1
+fi
+
+DUMPALL="$BACKUP_DIR/pg_dumpall.sql.gz"
+if [[ ! -f "$DUMPALL" ]]; then
+  error "pg_dumpall.sql.gz not found in $BACKUP_DIR"
+  exit 1
+fi
+
+SOURCE_CONTAINER="$(basename "$BACKUP_DIR")"
+info "Backup:           ${C_BOLD}$BACKUP_DIR${C_NC}"
+info "Source container: ${C_BOLD}$SOURCE_CONTAINER${C_NC}"
+info "Test container:   ${C_BOLD}$TEST_CONTAINER${C_NC} (port $TEST_PORT)"
+info "Dump size:        $(du -h "$DUMPALL" | cut -f1)"
+echo ""
+
+# Detect source user (only needed if source container is still running for comparison)
+SOURCE_USER=""
+COMPARE=false
+if docker ps --format '{{.Names}}' | grep -q "^${SOURCE_CONTAINER}$"; then
+  info "Source container is running — row counts will be compared"
+  for u in postgres root admin; do
+    if docker exec "$SOURCE_CONTAINER" psql -U "$u" -tAc 'SELECT 1' &>/dev/null; then
+      SOURCE_USER="$u"
+      break
+    fi
+  done
+  if [[ -n "$SOURCE_USER" ]]; then
+    COMPARE=true
+    success "Authenticated as '$SOURCE_USER' on source"
+  else
+    warn "Could not authenticate to source — skipping comparison"
+  fi
+else
+  warn "Source container '$SOURCE_CONTAINER' not running — skipping comparison"
+fi
+echo ""
+
+if ! confirm "Start test container and restore?"; then
+  exit 0
+fi
+echo ""
+
+# ── Step 1: Start throwaway container ─────────────────────────────────────
+info "Starting $TEST_IMAGE on port $TEST_PORT..."
+docker run -d --rm \
+  --name "$TEST_CONTAINER" \
+  -e POSTGRES_PASSWORD="$TEST_PASSWORD" \
+  -p "$TEST_PORT:5432" \
+  "$TEST_IMAGE" >/dev/null
+
+# Wait for postgres to be ready
+info "Waiting for postgres to accept connections..."
+for i in {1..30}; do
+  if docker exec "$TEST_CONTAINER" pg_isready -U postgres &>/dev/null; then
+    success "Postgres is ready"
+    break
+  fi
+  sleep 1
+  if [[ $i -eq 30 ]]; then
+    error "Postgres did not start in 30 seconds"
+    docker logs "$TEST_CONTAINER" | tail -20
+    exit 1
+  fi
+done
+echo ""
+
+# ── Step 2: Restore ────────────────────────────────────────────────────────
+info "Restoring $DUMPALL..."
+start_time=$(date +%s)
+if gunzip < "$DUMPALL" | docker exec -i "$TEST_CONTAINER" psql -U postgres -q &>/tmp/verify-postgres-restore.log; then
+  elapsed=$(( $(date +%s) - start_time ))
+  success "Restored in ${elapsed}s"
+else
+  error "Restore failed — see /tmp/verify-postgres-restore.log"
+  tail -20 /tmp/verify-postgres-restore.log
+  exit 1
+fi
+echo ""
+
+# ── Step 3: Sanity checks ──────────────────────────────────────────────────
+info "Restored databases:"
+docker exec "$TEST_CONTAINER" psql -U postgres -tAc \
+  "SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres';" \
+  | while read -r db; do
+      size=$(docker exec "$TEST_CONTAINER" psql -U postgres -tAc "SELECT pg_size_pretty(pg_database_size('$db'))")
+      echo -e "    ${C_CYAN}$db${C_NC} ${C_DIM}($size)${C_NC}"
+    done
+echo ""
+
+# ── Step 4: Compare row counts (if source available) ──────────────────────
+if $COMPARE; then
+  info "Comparing row counts (source vs restored)..."
+  echo ""
+
+  SRC_FILE=$(mktemp)
+  TEST_FILE=$(mktemp)
+  trap 'rm -f "$SRC_FILE" "$TEST_FILE"; cleanup' EXIT INT TERM
+
+  collect_row_counts source > "$SRC_FILE"
+  collect_row_counts test   > "$TEST_FILE"
+
+  src_count=$(wc -l < "$SRC_FILE")
+  test_count=$(wc -l < "$TEST_FILE")
+
+  info "Tables in source:   $src_count"
+  info "Tables in restored: $test_count"
+  echo ""
+
+  # Save diff to a tmp file so it's available for the user to inspect
+  DIFF_FILE=$(mktemp)
+  diff "$SRC_FILE" "$TEST_FILE" > "$DIFF_FILE" || true
+
+  if [[ ! -s "$DIFF_FILE" ]]; then
+    success "All row counts match — backup verified ✓"
+  else
+    warn "Row count differences detected:"
+    echo ""
+    head -40 "$DIFF_FILE" | sed 's/^/    /'
+    local_diff_lines=$(wc -l < "$DIFF_FILE")
+    if [[ "$local_diff_lines" -gt 40 ]]; then
+      echo -e "    ${C_DIM}... ($((local_diff_lines - 40)) more lines)${C_NC}"
+    fi
+    echo ""
+    info "Full diff saved to: ${C_BOLD}$DIFF_FILE${C_NC}"
+    warn "Note: small diffs can be normal if source changed during/after backup"
+  fi
+else
+  warn "Comparison skipped."
+fi
+
+echo ""
+info "Test container is running at localhost:$TEST_PORT"
+info "Connect with:"
+echo -e "    ${C_DIM}PGPASSWORD=$TEST_PASSWORD psql -h localhost -p $TEST_PORT -U postgres${C_NC}"
+echo ""
+
+if confirm "Destroy test container now?"; then
+  : # trap will handle cleanup on exit
+else
+  trap - EXIT INT TERM
+  # Still clean up temp diff/row-count files, just not the container
+  [[ -n "${SRC_FILE:-}" ]] && rm -f "$SRC_FILE" "$TEST_FILE"
+  info "Test container left running: ${C_BOLD}$TEST_CONTAINER${C_NC}"
+  info "Clean up manually with: ${C_BOLD}docker rm -f $TEST_CONTAINER${C_NC}"
+  if [[ -n "${DIFF_FILE:-}" && -s "$DIFF_FILE" ]]; then
+    info "Full diff: ${C_BOLD}$DIFF_FILE${C_NC}"
+  fi
+  exit 0
+fi
+
+echo ""
