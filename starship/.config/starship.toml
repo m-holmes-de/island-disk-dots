@@ -1,4 +1,5 @@
 format = """
+$username\
 $directory\
 $git_branch\
 $git_status\
@@ -15,7 +16,6 @@ $docker_context\
 $jobs\
 $cmd_duration\
 $line_break\
-$username\
 $character"""
 
 add_newline = false
@@ -23,7 +23,7 @@ palette = "catppuccin_frappe"
 
 [directory]
 style = 'bold fg:blue'
-format = '[$path ]($style)'
+format = '[  $path ]($style)'
 truncation_length = 3
 truncation_symbol = '…/'
 truncate_to_repo = false
@@ -105,9 +105,9 @@ format = '[$duration]($style)'
 
 [username]
 show_always = true
-style_user = 'fg:blue'
-style_root = 'fg:red'
-format = '[ $user]($style)'
+style_user = 'fg:mauve'
+style_root = 'bold fg:red'
+format = '[ $user](bold $style) [in](white) '
 
 [hostname]
 ssh_only = false
