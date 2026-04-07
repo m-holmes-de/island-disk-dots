@@ -10,6 +10,7 @@ BACKUP_STATE="${HOME}/.local/state/backup-street"
 BACKUP_LOG="${BACKUP_STATE}/last-backup.log"
 SELECTION_CACHE="${BACKUP_STATE}/last-selection"
 INTERRUPTED=false
+PG_CONTAINERS=()
 EXCLUDE_DEFAULTS=(
   ".cache"
   ".local/share/Trash"
@@ -221,6 +222,136 @@ save_selection() {
   printf '%s\n' "$@" > "$SELECTION_CACHE"
 }
 
+# ── Postgres (docker) detection & selection ────────────────────────────────
+find_postgres_containers() {
+  command -v docker &>/dev/null || return 0
+  docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null \
+    | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1}'
+}
+
+# Try common superuser names until one works
+detect_pg_user() {
+  local container="$1"
+  for user in postgres root admin; do
+    if docker exec "$container" psql -U "$user" -tAc 'SELECT 1' &>/dev/null; then
+      echo "$user"
+      return 0
+    fi
+  done
+  return 1
+}
+
+select_postgres_containers() {
+  local containers=()
+  mapfile -t containers < <(find_postgres_containers)
+
+  if [[ ${#containers[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  info "Found postgres container(s):" >&2
+  for c in "${containers[@]}"; do
+    local user dbs db_count image
+    image=$(docker inspect --format '{{.Config.Image}}' "$c" 2>/dev/null)
+    if user=$(detect_pg_user "$c"); then
+      dbs=$(docker exec "$c" psql -U "$user" -tAc \
+        "SELECT datname FROM pg_database WHERE datistemplate = false;" 2>/dev/null)
+      db_count=$(echo "$dbs" | grep -c .)
+      echo -e "    ${C_BOLD}$c${C_NC} ${C_DIM}($image, user=$user, $db_count dbs)${C_NC}" >&2
+      while IFS= read -r db; do
+        [[ -n "$db" ]] && echo -e "      ${C_DIM}• $db${C_NC}" >&2
+      done <<< "$dbs"
+    else
+      echo -e "    ${C_BOLD}$c${C_NC} ${C_RED}(could not authenticate)${C_NC}" >&2
+    fi
+  done
+  echo "" >&2
+
+  if ! confirm "Include postgres database dumps in backup?"; then
+    return 0
+  fi
+
+  if [[ ${#containers[@]} -eq 1 ]]; then
+    echo "${containers[0]}"
+    return 0
+  fi
+
+  if $USE_GUM; then
+    printf '%s\n' "${containers[@]}" | \
+      gum choose --no-limit --header "  Select containers to back up:" \
+        --selected "$(IFS=,; echo "${containers[*]}")"
+  else
+    printf '%s\n' "${containers[@]}" | \
+      fzf --multi --prompt="  Select containers (Tab to toggle): " \
+          --header="  Postgres containers" \
+          --height=40% --reverse --border
+  fi
+}
+
+backup_postgres() {
+  local backup_dir="$1"
+  shift
+  local containers=("$@")
+
+  [[ ${#containers[@]} -eq 0 ]] && return 0
+
+  local pg_root="$backup_dir/postgres"
+  mkdir -p "$pg_root"
+
+  local pg_failed=0
+  for container in "${containers[@]}"; do
+    info "Dumping postgres container ${C_BOLD}${container}${C_NC}..."
+
+    local pg_user
+    if ! pg_user=$(detect_pg_user "$container"); then
+      error "Could not authenticate to $container — skipping"
+      ((++pg_failed))
+      continue
+    fi
+
+    local container_dir="$pg_root/$container"
+    mkdir -p "$container_dir"
+
+    # 1. pg_dumpall — full cluster dump (includes roles, tablespaces, all DBs)
+    info "  pg_dumpall (full cluster)..."
+    if docker exec -t "$container" pg_dumpall -U "$pg_user" 2>>"$BACKUP_LOG" \
+        | gzip > "$container_dir/pg_dumpall.sql.gz"; then
+      success "  pg_dumpall.sql.gz"
+    else
+      error "  pg_dumpall failed for $container"
+      ((++pg_failed))
+    fi
+
+    # 2. pg_dump per database (custom format, compressed, parallel-restore capable)
+    local databases
+    databases=$(docker exec "$container" psql -U "$pg_user" -tAc \
+      "SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres';" 2>/dev/null)
+
+    if [[ -n "$databases" ]]; then
+      mkdir -p "$container_dir/databases"
+      while IFS= read -r db; do
+        [[ -z "$db" ]] && continue
+        info "  pg_dump $db..."
+        if docker exec "$container" pg_dump -U "$pg_user" -Fc "$db" \
+            > "$container_dir/databases/${db}.dump" 2>>"$BACKUP_LOG"; then
+          success "  ${db}.dump"
+        else
+          error "  pg_dump failed for $db"
+          ((++pg_failed))
+        fi
+      done <<< "$databases"
+    fi
+  done
+
+  echo ""
+  if [[ $pg_failed -eq 0 ]]; then
+    success "Postgres dumps saved to: $pg_root"
+  else
+    warn "$pg_failed postgres operation(s) failed. See $BACKUP_LOG"
+  fi
+  echo ""
+}
+
 # ── Step 3: Configure excludes ─────────────────────────────────────────────
 configure_excludes() {
   info "Default exclusions:"
@@ -267,6 +398,9 @@ run_backup() {
     echo -e "    ${C_CYAN}~/$f${C_NC}"
   done
   echo -e "  ${C_BOLD}Excludes:${C_NC} ${#EXCLUDE_DEFAULTS[@]} patterns"
+  if [[ ${#PG_CONTAINERS[@]} -gt 0 ]]; then
+    echo -e "  ${C_BOLD}Postgres:${C_NC} ${#PG_CONTAINERS[@]} container(s) — ${PG_CONTAINERS[*]}"
+  fi
   echo -e "  ${C_DIM}─────────────────────────────────────${C_NC}"
   echo ""
 
@@ -337,6 +471,12 @@ run_backup() {
 
   # Restore default signal handling
   trap - INT
+
+  # Postgres dumps (after rsync, so they live alongside file backups)
+  if [[ ${#PG_CONTAINERS[@]} -gt 0 ]] && ! $INTERRUPTED; then
+    echo ""
+    backup_postgres "$backup_dir" "${PG_CONTAINERS[@]}"
+  fi
 
   # Calculate stats
   local end_time elapsed_secs total_size
@@ -432,13 +572,30 @@ main() {
   success "Selected ${#folders[@]} items"
   echo ""
 
-  # Step 3: Excludes
-  info "${C_BOLD}Step 3:${C_NC} Configure exclusions"
+  # Step 3: Postgres (docker) — only if containers detected
+  PG_CONTAINERS=()
+  if command -v docker &>/dev/null && [[ -n "$(find_postgres_containers)" ]]; then
+    info "${C_BOLD}Step 3:${C_NC} Postgres database dumps (docker)"
+    local pg_raw
+    pg_raw=$(select_postgres_containers)
+    if [[ -n "$pg_raw" ]]; then
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && PG_CONTAINERS+=("$line")
+      done <<< "$pg_raw"
+      success "Will dump ${#PG_CONTAINERS[@]} container(s)"
+    else
+      info "Skipping postgres dumps"
+    fi
+    echo ""
+  fi
+
+  # Step 4: Excludes
+  info "${C_BOLD}Step 4:${C_NC} Configure exclusions"
   configure_excludes
   echo ""
 
-  # Step 4: Run
-  info "${C_BOLD}Step 4:${C_NC} Execute backup"
+  # Step 5: Run
+  info "${C_BOLD}Step 5:${C_NC} Execute backup"
   run_backup "$dest" "${folders[@]}"
 }
 
