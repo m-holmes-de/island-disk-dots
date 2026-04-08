@@ -60,10 +60,34 @@ Single bash script (`backup-street`) with 4 interactive steps:
 - Consider adding to `scripts/` stow package so it lands in `~/.local/bin/` automatically
 - Integrate with systemd timer for optional scheduled backups
 
+## Postgres (docker) backups
+
+When backup-street detects running postgres containers via `docker ps`, it
+offers to dump them as part of the backup. For each selected container it
+creates `<backup>/postgres/<container>/`:
+
+- `metadata.json` — container info (image, user, version, port, databases)
+- `pg_dumpall.sql.gz` — full cluster dump (roles, globals, all DBs)
+- `databases/<db>.dump` — per-database `pg_dump -Fc` files
+
+## Restore (`restore-postgres`)
+
+The companion `restore-postgres` script has two modes:
+
+- **restore** (default) — interactive restore to a **persistent** container.
+  Reads `metadata.json` to auto-populate defaults for container name, image,
+  port, etc., and lets the user override any of them. Creates a named docker
+  volume so data survives container restart. Supports full-cluster restore
+  (`pg_dumpall`) or per-database restore (`pg_restore` on `.dump` files).
+- **verify** (`--verify`) — spins up a **throwaway** container on a free port,
+  restores the dump, and compares row counts to the source container (if it's
+  still running). Container is destroyed on exit unless the user opts to keep it.
+
 ## File Layout
 
 ```
 backup-street/
-├── CLAUDE.md       # this file
-└── backup-street   # main executable script
+├── CLAUDE.md         # this file
+├── backup-street     # main backup script
+└── restore-postgres  # postgres restore/verify script
 ```

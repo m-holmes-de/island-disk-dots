@@ -23,6 +23,15 @@ EXCLUDE_DEFAULTS=(
   ".gradle"
   ".m2"
   "target"
+  # mise: local state/cache, excluded to avoid trust-cache corruption when
+  # browsing backups (mise auto-activates and re-evaluates trust on any
+  # mise.toml/config.toml it finds). Tools are regenerable via `mise install`.
+  # Patterns are anchored (leading /) to source root so they only match
+  # ~/.local/share/mise, ~/.local/state/mise, ~/.config/mise — NOT any
+  # project-level .mise.toml or mise dirs inside ~/Projects/.
+  "/mise"         # matches ~/.config/mise when source is .config
+  "/share/mise"   # matches ~/.local/share/mise when source is .local
+  "/state/mise"   # matches ~/.local/state/mise when source is .local
 )
 
 # ── Detect TUI backend ─────────────────────────────────────────────────────
@@ -288,6 +297,65 @@ select_postgres_containers() {
   fi
 }
 
+write_postgres_metadata() {
+  local container="$1" user="$2" out="$3"
+
+  # Gather container info via docker inspect
+  local image port_mapping env_vars mounts
+  image=$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)
+  # First published port for 5432/tcp, if any
+  port_mapping=$(docker inspect --format \
+    '{{range $p, $conf := .NetworkSettings.Ports}}{{if and (eq $p "5432/tcp") $conf}}{{(index $conf 0).HostPort}}{{end}}{{end}}' \
+    "$container" 2>/dev/null)
+  mounts=$(docker inspect --format '{{json .Mounts}}' "$container" 2>/dev/null)
+
+  # Query postgres for version + DB list
+  local pg_version databases_json
+  pg_version=$(docker exec "$container" psql -U "$user" -tAc 'SHOW server_version' 2>/dev/null | tr -d '[:space:]')
+  databases_json=$(docker exec "$container" psql -U "$user" -tAc \
+    "SELECT json_agg(datname ORDER BY datname) FROM pg_database WHERE datistemplate = false;" 2>/dev/null)
+  [[ -z "$databases_json" || "$databases_json" == "null" ]] && databases_json="[]"
+
+  # Build JSON — use jq if available for correctness, else fall back to printf
+  if command -v jq &>/dev/null; then
+    jq -n \
+      --arg container   "$container" \
+      --arg image       "$image" \
+      --arg user        "$user" \
+      --arg version     "$pg_version" \
+      --arg hostname    "$(hostname)" \
+      --arg backup_date "$(date -Iseconds)" \
+      --arg port        "$port_mapping" \
+      --argjson databases "$databases_json" \
+      --argjson mounts    "${mounts:-[]}" \
+      '{
+        container:   $container,
+        image:       $image,
+        user:        $user,
+        version:     $version,
+        hostname:    $hostname,
+        backup_date: $backup_date,
+        original_port: (if $port == "" then null else ($port | tonumber) end),
+        databases:   $databases,
+        mounts:      $mounts
+      }' > "$out"
+  else
+    cat > "$out" <<EOF
+{
+  "container": "$container",
+  "image": "$image",
+  "user": "$user",
+  "version": "$pg_version",
+  "hostname": "$(hostname)",
+  "backup_date": "$(date -Iseconds)",
+  "original_port": ${port_mapping:-null},
+  "databases": $databases_json,
+  "mounts": ${mounts:-[]}
+}
+EOF
+  fi
+}
+
 backup_postgres() {
   local backup_dir="$1"
   shift
@@ -311,6 +379,10 @@ backup_postgres() {
 
     local container_dir="$pg_root/$container"
     mkdir -p "$container_dir"
+
+    # Capture metadata for later restore
+    info "  Capturing container metadata..."
+    write_postgres_metadata "$container" "$pg_user" "$container_dir/metadata.json"
 
     # 1. pg_dumpall — full cluster dump (includes roles, tablespaces, all DBs)
     info "  pg_dumpall (full cluster)..."
