@@ -44,9 +44,10 @@ apply_session_color() {
 }
 
 if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
-  tmux new-session -s "$selected_name" -c "$selected"
+  tmux new-session -ds "$selected_name" -c "$selected"
   setup_windows "$selected_name" "$selected"
   apply_session_color "$selected" "$selected_name"
+  tmux attach -t "$selected_name"
   exit 0
 fi
 
