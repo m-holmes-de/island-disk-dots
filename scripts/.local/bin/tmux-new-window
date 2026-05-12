@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Creates a new tmux window with optional name and position
+# Usage: tmux-new-window "name" "position" "path"
+
+name="$1"
+pos="$2"
+path="$3"
+
+cmd="tmux new-window"
+[[ -n "$path" ]] && cmd="$cmd -c \"$path\""
+[[ -n "$name" ]] && cmd="$cmd -n \"$name\""
+[[ -n "$pos" ]] && cmd="$cmd -b -t \"$pos\""
+
+eval "$cmd"
